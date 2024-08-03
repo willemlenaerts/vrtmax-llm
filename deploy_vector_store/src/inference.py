@@ -20,7 +20,7 @@ def model_fn(model_dir):
 
     # load vector store
     vs_path = os.path.join(model_dir, 'faiss')
-    vs = FAISS.load_local(vs_path, hf)
+    vs = FAISS.load_local(vs_path, hf,allow_dangerous_deserialization=True)
     return vs
 
 
