@@ -1,3 +1,6 @@
 mlartifacts/
 mlruns/
 *.csv
+*.tar.gz
+*.faiss
+*.pkl
