@@ -5,27 +5,28 @@ import boto3
 from sagemaker.huggingface.model import HuggingFacePredictor
 import json
 
+
 # AWS login to use sagemaker endpoints
-if count == 0:
+print(sl.session_state)
+if "sagemaker_session" not in sl.session_state:
     session = boto3.Session(profile_name='vrt-analytics-engineer-nonsensitive')
     sagemaker_session = sagemaker.Session(boto_session=session)
+    sl.session_state.sagemaker_session = sagemaker_session
     role = sagemaker.get_execution_role(sagemaker_session=sagemaker_session)
-    count += 1
-
+print(sl.session_state)
 # Vector store endpoint
 endpoint_name = "faiss-endpoint-1722716142"
-faiss_vector_store = sagemaker.predictor.Predictor(endpoint_name,sagemaker_session=sagemaker_session)
+faiss_vector_store = sagemaker.predictor.Predictor(endpoint_name,sagemaker_session=sl.session_state.sagemaker_session)
 assert faiss_vector_store.endpoint_context().properties['Status'] == 'InService'
 
 # LLM endpoint
-llm = HuggingFacePredictor(endpoint_name="huggingface-pytorch-tgi-inference-2024-07-30-20-23-30-977",sagemaker_session=sagemaker_session)
+llm = HuggingFacePredictor(endpoint_name="huggingface-pytorch-tgi-inference-2024-07-30-20-23-30-977",sagemaker_session=sl.session_state.sagemaker_session)
 
 if __name__=='__main__':
     sl.header("VRT MAX chat")
 
     
     query=sl.text_input('Wat is je vraag?')
-    
     if(query):
             # Fetch relevant content
             payload = json.dumps({
@@ -37,7 +38,6 @@ if __name__=='__main__':
                 initial_args={"ContentType": "application/json", "Accept": "application/json"}
             )
             out = json.loads(out)
-
             # Generate prompt
             system_prompt = """
             Je bent een hulpvaardige assistent die Nederlands spreekt.
@@ -77,7 +77,4 @@ if __name__=='__main__':
             }
 
             chat = llm.predict({"messages" :messages, **parameters})
-
-            print(chat["choices"][0]["message"]["content"].strip())
-            
             sl.write(chat["choices"][0]["message"]["content"].strip())
