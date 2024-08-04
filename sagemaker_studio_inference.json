@@ -1,0 +1,10 @@
+{"messages" :[
+    { "role": "system", "content": "Je bent een hulpvaardige assistent die Nederlands spreekt. Je krijgt vragen over de catalogus van programma's van het videoplatform VRT MAX.  Je probeert mensen te helpen om programma's aan te bevelen die aansluiten bij hun vraag. Daarvoor krijg je een beschrijving van een aantal programma's. Aan jou om wat relevant is aan te bevelen." },
+    { "role": "user", "content": "vogels en natuur" }
+  ], 
+ "model": "meta-llama/Meta-Llama-3-8B-Instruct",
+     "top_p": 0.6,
+    "temperature": 0.9,
+    "max_tokens": 512,
+    "stop": ["<|eot_id|>"]
+}
