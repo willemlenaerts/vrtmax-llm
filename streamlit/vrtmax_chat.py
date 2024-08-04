@@ -7,13 +7,12 @@ import json
 
 
 # AWS login to use sagemaker endpoints
-print(sl.session_state)
 if "sagemaker_session" not in sl.session_state:
     session = boto3.Session(profile_name='vrt-analytics-engineer-nonsensitive')
     sagemaker_session = sagemaker.Session(boto_session=session)
     sl.session_state.sagemaker_session = sagemaker_session
     role = sagemaker.get_execution_role(sagemaker_session=sagemaker_session)
-print(sl.session_state)
+
 # Vector store endpoint
 endpoint_name = "faiss-endpoint-1722716142"
 faiss_vector_store = sagemaker.predictor.Predictor(endpoint_name,sagemaker_session=sl.session_state.sagemaker_session)
