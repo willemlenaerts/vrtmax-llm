@@ -6,9 +6,11 @@ from sagemaker.huggingface.model import HuggingFacePredictor
 import json
 
 # AWS login to use sagemaker endpoints
-session = boto3.Session(profile_name='vrt-analytics-engineer-nonsensitive')
-sagemaker_session = sagemaker.Session(boto_session=session)
-role = sagemaker.get_execution_role(sagemaker_session=sagemaker_session)
+if count == 0:
+    session = boto3.Session(profile_name='vrt-analytics-engineer-nonsensitive')
+    sagemaker_session = sagemaker.Session(boto_session=session)
+    role = sagemaker.get_execution_role(sagemaker_session=sagemaker_session)
+    count += 1
 
 # Vector store endpoint
 endpoint_name = "faiss-endpoint-1722716142"
