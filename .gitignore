@@ -4,3 +4,4 @@ mlruns/
 *.tar.gz
 *.faiss
 *.pkl
+*.json
