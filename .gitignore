@@ -5,3 +5,4 @@ mlruns/
 *.faiss
 *.pkl
 *.json
+.env

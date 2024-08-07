@@ -2,10 +2,10 @@
 import streamlit as sl
 import sagemaker
 import boto3
-from sagemaker.huggingface.model import HuggingFacePredictor
 import json
-import random
 import time
+import subprocess
+from langchain_aws import ChatBedrockConverse
 
 # Streamed response emulator
 def response_generator(response):
@@ -13,22 +13,43 @@ def response_generator(response):
         yield word + " "
         time.sleep(0.05)
 
-# AWS login to use sagemaker endpoints
 if "sagemaker_session" not in sl.session_state:
-    session = boto3.Session(profile_name='vrt-analytics-engineer-nonsensitive')
+    # Login AWS
+    aws_profile = "vrt-analytics-engineer-nonsensitive"
+    envvars = subprocess.check_output(['aws-vault', 'exec', aws_profile, '--', 'env'])
+    for envline in envvars.split(b'\n'):
+        line = envline.decode('utf8')
+        eqpos = line.find('=')
+        if eqpos < 4:
+            continue
+        k = line[0:eqpos]
+        v = line[eqpos+1:]
+        if k == 'AWS_ACCESS_KEY_ID':
+            aws_access_key_id = v
+        if k == 'AWS_SECRET_ACCESS_KEY':
+            aws_secret_access_key = v
+        if k == 'AWS_SESSION_TOKEN':
+            aws_session_token = v
+
+    session = boto3.Session(
+    aws_access_key_id, aws_secret_access_key, aws_session_token, region_name="eu-west-1"
+    )    
     sagemaker_session = sagemaker.Session(boto_session=session)
-    sl.session_state.sagemaker_session = sagemaker_session
     role = sagemaker.get_execution_role(sagemaker_session=sagemaker_session)
 
-    # Vector store endpoint
-    endpoint_name = "faiss-endpoint-1722716142"
-    faiss_vector_store = sagemaker.predictor.Predictor(endpoint_name,sagemaker_session=sl.session_state.sagemaker_session)
-    sl.session_state.faiss = faiss_vector_store
-
+    endpoint_name = "faiss-endpoint-1723058950"
+    faiss_vector_store = sagemaker.predictor.Predictor(endpoint_name,sagemaker_session=sagemaker_session)
 
     # LLM endpoint
-    llm = HuggingFacePredictor(endpoint_name="huggingface-pytorch-tgi-inference-2024-07-30-20-23-30-977",sagemaker_session=sl.session_state.sagemaker_session)
-    sl.session_state.llm = llm
+    llm = ChatBedrockConverse(
+        credentials_profile_name=aws_profile, 
+        region_name="eu-west-2",
+        model="meta.llama3-70b-instruct-v1:0",
+        temperature=0.6,
+        top_p=0.6,
+        max_tokens=512
+    )
+
 
 # Set up chatbot
 sl.title("VRT MAX chat")
@@ -47,32 +68,33 @@ if "messages" not in sl.session_state:
     Begin niet met het geven van jouw mening over de programma's. Begin direct met het aanbevelen van relevante content aan de gebruiker.
     """
 
-    sl.session_state.messages.append({ "role": "system", "content": system_prompt })
+    sl.session_state.messages.append(("system",system_prompt ))
 
 # Display chat messages from history on app rerun
 if "messages_to_display" not in sl.session_state:
     sl.session_state.messages_to_display = []
 
 for message in sl.session_state.messages_to_display:
-    if message["role"] != "system":
-        with sl.chat_message(message["role"]):
-            sl.markdown(message["content"])
+    if message[0] != "system":
+        with sl.chat_message(message[0]):
+            sl.markdown(message[1])
 
 if __name__== '__main__':
 
     query=sl.chat_input('Wat is je vraag?')
+
     if(query):
 
         # Display user message in chat message container
         sl.chat_message("user").markdown(query)
-        sl.session_state.messages_to_display.append({ "role": "user", "content": query })
+        sl.session_state.messages_to_display.append(( "human",  query ))
 
         # Fetch relevant content
         payload = json.dumps({
             "text": query,
         })
 
-        out = sl.session_state.faiss.predict(
+        out = faiss_vector_store.predict(
             payload,
             initial_args={"ContentType": "application/json", "Accept": "application/json"}
         )
@@ -93,23 +115,15 @@ if __name__== '__main__':
 
         # Ask question
         # Prompt to generate
-        sl.session_state.messages.append({ "role": "user", "content": user_prompt })
+        sl.session_state.messages.append(( "human",  user_prompt ))
 
-        # Generation arguments
-        parameters = {
-            "model": "meta-llama/Meta-Llama-3-8B-Instruct", # placeholder, needed
-            "top_p": 0.6,
-            "temperature": 0.9,
-            "max_tokens": 512,
-            "stop": ["<|eot_id|>"],
-        }
+        chat = llm.invoke(sl.session_state.messages)
 
-        chat = sl.session_state.llm.predict({"messages" :sl.session_state.messages, **parameters})
+        stream = llm.stream(sl.session_state.messages)
 
-        response = chat["choices"][0]["message"]["content"].strip()
-        sl.session_state.messages.append({ "role": "assistant", "content": response })
-        sl.session_state.messages_to_display.append({ "role": "assistant", "content": response })
+        sl.session_state.messages.append(("assistant", chat ))
+        sl.session_state.messages_to_display.append(("assistant", chat ))
 
         # Display assistant response in chat message container
-        with sl.chat_message("assistant"):
-            response = sl.write_stream(response_generator(response))
+        sl.write_stream(stream)
+        # sl.chat_message("assistant").markdown(chat)
