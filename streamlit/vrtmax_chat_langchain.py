@@ -1,26 +1,30 @@
 import sagemaker
 import boto3
-import json
-import time
 import subprocess
-from langchain_aws import ChatBedrockConverse
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_community.chat_message_histories import StreamlitChatMessageHistory
-from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
 from os import environ
 import streamlit as st
-import subprocess
+from typing import List
+import pandas as pd
+
+# Langchain imports
+from langchain_huggingface import HuggingFaceEmbeddings
+
+
+from langchain_aws import ChatBedrockConverse
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
+
 from opensearchpy import RequestsHttpConnection, AWSV4SignerAuth
-from langchain.embeddings.huggingface import HuggingFaceEmbeddings
-from langchain.vectorstores import OpenSearchVectorSearch
+
+from langchain_community.vectorstores import OpenSearchVectorSearch
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain.embeddings.base import Embeddings
 from sentence_transformers import SentenceTransformer
-from typing import List
+
+
+st.set_page_config(layout="wide")
 
 # Reference: https://python.langchain.com/docs/integrations/memory/streamlit_chat_message_history
 st.title("📖 VRT Max Chat")
@@ -35,7 +39,23 @@ class CustomEmbeddings(Embeddings):
 
     def embed_query(self, query: str) -> List[float]:
         return self.model.encode([query])[0].tolist()
-    
+
+model_options = [
+    "meta.llama3-8b-instruct-v1:0",
+    "meta.llama3-70b-instruct-v1:0"
+]
+
+
+def update_llm():
+    llm = ChatBedrockConverse(
+        region_name="eu-west-2",
+        model=st.session_state.model,
+        temperature=st.session_state.temperature,
+        top_p=st.session_state.top_p,
+        max_tokens=st.session_state.max_tokens
+    )
+    return llm   
+
 # Load AWS Profile/credentials from .env
 if "sagemaker_session" not in st.session_state:
     # Login AWS
@@ -69,15 +89,16 @@ if "sagemaker_session" not in st.session_state:
 
     # Retriever
     model_name = "NetherlandsForensicInstitute/robbert-2022-dutch-sentence-transformers"
-    # encode_kwargs = {'normalize_embeddings': False}
-    # embeddings = HuggingFaceEmbeddings(
-    #     model_name=model_name,
-    #     encode_kwargs=encode_kwargs
-    # )
+    encode_kwargs = {'normalize_embeddings': False}
+    embeddings = HuggingFaceEmbeddings(
+        model_name=model_name,
+        encode_kwargs=encode_kwargs
+    )
 
     embeddings = CustomEmbeddings(model_name=model_name)
 
     # Init OpenSearch client connection
+    st.session_state.temperature = 0.6
     docsearch = OpenSearchVectorSearch(
         index_name="aoss-index",  # TODO: use the same index-name used in the ingestion script
         embedding_function=embeddings,
@@ -91,38 +112,45 @@ if "sagemaker_session" not in st.session_state:
     retriever = docsearch.as_retriever(search_kwargs={'k': 5,"vector_field":"vrtmax_catalog_vector"})
 
     # LLM endpoint
-    llm = ChatBedrockConverse(
-        region_name="eu-west-2",
-        model="meta.llama3-70b-instruct-v1:0",
-        temperature=0.6,
-        top_p=0.6,
-        max_tokens=512
-    )
+    st.session_state.model = "meta.llama3-70b-instruct-v1:0"
+    st.session_state.temperature = 0.6
+    st.session_state.top_p = 0.4
+    st.session_state.max_tokens = 512
+    st.session_state.llm = update_llm()
 
-msgs = StreamlitChatMessageHistory(key='langchain_messages')
-# if len(msgs.messages) == 0:
-#     msgs.add_ai_message("How can I help you?")
+col1, col2 = st.columns(2)
 
-view_messages = st.expander("View the message contents in session state")
+with col1:
+    # Model version
+    st.session_state.model = st.selectbox(label="Selecteer model",index=model_options.index(st.session_state.model),options=model_options,on_change=update_llm)
 
-# Generate prompt
-# SYSTEM
-system_prompt = """
-Je bent een hulpvaardige assistent die Nederlands spreekt.
-Je krijgt vragen over de catalogus van programma's van het videoplatform VRT MAX. 
-Je probeert mensen te helpen om programma's aan te bevelen die aansluiten bij hun vraag.
-Daarvoor krijg je een beschrijving van een aantal programma's.
+    # Model settings
+    st.session_state.temperature = st.slider(label="Temperature", min_value=0.0,max_value=1.0,value=st.session_state.temperature,on_change=update_llm)
+    st.session_state.top_p = st.slider(label="Top p", min_value=0.0,max_value=1.0,value=st.session_state.top_p,on_change=update_llm)
+    st.session_state.max_tokens = st.slider(label="Max tokens", min_value=0,max_value=4096,value=st.session_state.max_tokens,on_change=update_llm)
+
+    # Generate prompt
+    # SYSTEM
+    system_prompt_start = """Je bent een hulpvaardige assistent die Nederlands spreekt.
+Je krijgt vragen over de catalogus van episodes van het videoplatform VRT MAX. 
+Je probeert mensen te helpen om episodes aan te bevelen die aansluiten bij hun vraag.
+Daarvoor krijg je een beschrijving van een aantal episodes.
 Aan jou om wat relevant is aan te bevelen.
-Begin niet met het geven van jouw mening over de programma's. Begin direct met het aanbevelen van relevante content aan de gebruiker.
-"""
+Begin niet met het geven van jouw mening over de episodes. Begin direct met het aanbevelen van relevante content aan de gebruiker.
+Leg ook telkens uit waarom je een episode aanbeveelt.
+Geef voor alle episodes die je aanbeveelt ook de URL mee als referentie."""
 
-# HUMAN
-message = """Beantwoordt de vraag op basis van de volgende context:
+    system_prompt = st.text_area("Systeem prompt",system_prompt_start,height=200)
+
+    # HUMAN
+    message_start = """Beantwoordt de vraag op basis van de volgende context:
 
 {context}
 
-Vraag: {question}
-"""
+Vraag: {question}"""
+
+    message = st.text_area("Vraag met context",message_start, height=200)
+
 # prompt = ChatPromptTemplate.from_messages(
 #     [
 #         ("system", system_prompt),
@@ -148,16 +176,33 @@ def format_docs(docs):
 
         context.append("Het programma met de naam " + d.metadata["mediacontent_pagetitle_program"] +\
                 " heeft volgende beschrijving: " + program_description  +\
-                " De episode van dit programma heeft als beschrijving: " + d.metadata["mediacontent_page_description"])
+                " De episode van dit programma heeft als beschrijving: " + d.metadata["mediacontent_page_description"] +\
+                " De episode zal online staan tot " + d.metadata["offering_publication_planneduntil"] +\
+                " De episode heeft als URL " + d.metadata["mediacontent_pageurl"] +\
+                " De episode heeft als foto " + "https:" +d.metadata["mediacontent_imageurl"] 
+        )
         
     return "\n\n".join(context)
 
-chain = (
-    {"context": retriever | format_docs, "question": RunnablePassthrough()}
+# chain = (
+#     {"context": retriever | format_docs, "question": RunnablePassthrough()}
+#     | prompt
+#     | st.session_state.llm
+#     | StrOutputParser()
+# )
+
+from langchain_core.runnables import RunnableParallel
+
+rag_chain_from_docs = (
+    RunnablePassthrough.assign(context=(lambda x: format_docs(x["context"])))
     | prompt
-    | llm
+    | st.session_state.llm
     | StrOutputParser()
 )
+
+rag_chain_with_source = RunnableParallel(
+    {"context": retriever, "question": RunnablePassthrough()}
+).assign(answer=rag_chain_from_docs)
 
 # chain_with_history = RunnableWithMessageHistory(
 #     chain,
@@ -166,24 +211,19 @@ chain = (
 #     history_messages_key="history",
 # )
 
-for msg in msgs.messages:
-    st.chat_message(msg.type).write(msg.content)
 
-if prompt := st.chat_input():
-    st.chat_message("human").write(prompt)
-    config = {"configurable": {"session_id": "special_key"}}
-    response = chain.invoke({"question": prompt}, config)
-    st.chat_message("ai").write(response)
+with col2:
+    prompt = st.chat_input()
+    if prompt:
+        st.chat_message("human").write(prompt)
+        config = {"configurable": {"session_id": "special_key"}}
+        response = rag_chain_with_source.invoke({"question": prompt}, config)
+        print(len(response["context"]))
+        st.chat_message("ai").write(response["answer"])
 
-
-# Draw the messages at the end, so newly generated ones show up immediately
-with view_messages:
-    """
-    Message History initialized with:
-    ```python
-    msgs = StreamlitChatMessageHistory(key="langchain_messages")
-    ```
-
-    Contents of `st.session_state.langchain_messages`:
-    """
-    view_messages.json(st.session_state.langchain_messages)
+        context = response["context"]
+        metadata = []
+        for item in response["context"]:
+            metadata.append(item.metadata)
+        df = pd.DataFrame.from_records(metadata)
+        st.dataframe(df)
