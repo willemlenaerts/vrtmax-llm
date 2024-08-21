@@ -5,7 +5,7 @@ from os import environ
 import streamlit as st
 from typing import List
 import pandas as pd
-s
+
 # Langchain imports
 from langchain_huggingface import HuggingFaceEmbeddings
 
@@ -143,7 +143,7 @@ Geef voor alle episodes die je aanbeveelt ook de URL mee als referentie."""
     system_prompt = st.text_area("Systeem prompt",system_prompt_start,height=200)
 
     # HUMAN
-    message_start = """Beantwoord de vraag op basis van de volgende context:
+    message_start = """Beantwoordt de vraag op basis van de volgende context:
 
 {context}
 
