@@ -5,7 +5,7 @@ from os import environ
 import streamlit as st
 from typing import List
 import pandas as pd
-s
+
 # Langchain imports
 from langchain_huggingface import HuggingFaceEmbeddings
 
@@ -42,7 +42,8 @@ class CustomEmbeddings(Embeddings):
 
 model_options = [
     "meta.llama3-8b-instruct-v1:0",
-    "meta.llama3-70b-instruct-v1:0"
+    "meta.llama3-70b-instruct-v1:0",
+    "mistral.mistral-large-2402-v1:0"
 ]
 
 
@@ -112,7 +113,7 @@ if "sagemaker_session" not in st.session_state:
     retriever = docsearch.as_retriever(search_kwargs={'k': 5,"vector_field":"vrtmax_catalog_vector"})
 
     # LLM endpoint
-    st.session_state.model = "meta.llama3-70b-instruct-v1:0"
+    st.session_state.model = "mistral.mistral-large-2402-v1:0"
     st.session_state.temperature = 0.6
     st.session_state.top_p = 0.4
     st.session_state.max_tokens = 512
@@ -132,13 +133,13 @@ with col1:
     # Generate prompt
     # SYSTEM
     system_prompt_start = """Je bent een hulpvaardige assistent die Nederlands spreekt.
-Je krijgt vragen over de catalogus van episodes van het videoplatform VRT MAX. 
-Je probeert mensen te helpen om episodes aan te bevelen die aansluiten bij hun vraag.
-Daarvoor krijg je een beschrijving van een aantal episodes.
-Aan jou om wat relevant is aan te bevelen.
-Begin niet met het geven van jouw mening over de episodes. Begin direct met het aanbevelen van relevante content aan de gebruiker.
-Leg ook telkens uit waarom je een episode aanbeveelt.
-Geef voor alle episodes die je aanbeveelt ook de URL mee als referentie."""
+    Je krijgt vragen over de catalogus van episodes van het videoplatform VRT MAX. 
+    Je probeert mensen te helpen om episodes aan te bevelen die aansluiten bij hun vraag.
+    Daarvoor krijg je een beschrijving van een aantal episodes én eventueel ook een stukje van de ondertitels van de episode.
+    Aan jou om wat relevant is aan te bevelen. Als je niets vindt dat voldoet aan de vraag van de gebruiker dan mag je dat ook zeggen.
+    Begin niet met het geven van jouw mening over de episodes. Begin direct met het aanbevelen van relevante content aan de gebruiker.
+    Leg ook telkens uit waarom je een episode aanbeveelt.
+    Geef voor alle episodes die je aanbeveelt ook de URL mee als referentie."""
 
     system_prompt = st.text_area("Systeem prompt",system_prompt_start,height=200)
 
@@ -175,11 +176,12 @@ def format_docs(docs):
             program_description = docs[0].metadata["mediacontent_page_editorialtitle_program"]
 
         context.append("Het programma met de naam " + d.metadata["mediacontent_pagetitle_program"] +\
-                " heeft volgende beschrijving: " + program_description  +\
-                " De episode van dit programma heeft als beschrijving: " + d.metadata["mediacontent_page_description"] +\
-                " De episode zal online staan tot " + d.metadata["offering_publication_planneduntil"] +\
-                " De episode heeft als URL " + d.metadata["mediacontent_pageurl"] +\
-                " De episode heeft als foto " + "https:" +d.metadata["mediacontent_imageurl"] 
+                " heeft volgende beschrijving: " + program_description + "." +\
+                " De episode van dit programma heeft als naam: " + d.metadata["mediacontent_pagetitle"] + "."  +\
+                " De episode van dit programma heeft als beschrijving: " + d.metadata["mediacontent_page_description"] + "."  +\
+                " De episode zal online staan tot " + d.metadata["offering_publication_planneduntil"] + "."  +\
+                " De episode heeft als URL " + d.metadata["mediacontent_pageurl"] + "."  +\
+                " De episode heeft als foto " + "https:" +d.metadata["mediacontent_imageurl"] + "."  
         )
         
     return "\n\n".join(context)
