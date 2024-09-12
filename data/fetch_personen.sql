@@ -9,6 +9,6 @@ FROM marketing_prod.aem_vrtvideo_datariver
 WHERE year = 2024  and mediacontent_episode_castlist is not null )
 WHERE rn = 1)
 
-select distinct persoon
+select distinct naam
 from dataset,
-unnest(mediacontent_episode_castlist) as t(persoon)
+unnest(mediacontent_episode_castlist) as t(naam)
