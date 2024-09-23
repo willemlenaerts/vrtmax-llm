@@ -26,20 +26,6 @@ from fuzzywuzzy import fuzz
 import time 
 import datetime
 from dateutil import tz
-import mlflow
-
-# if "first_run" not in st.session_state:
-#     st.session_state["first_run"] = True
-# if st.session_state["first_run"]:
-#     # Using a local MLflow tracking server
-#     mlflow.set_tracking_uri("http://localhost:8080")
-
-#     # Create a new experiment that the model and the traces will be logged to
-#     mlflow.set_experiment("VRT Max Chat v2")
-
-#     mlflow.langchain.autolog(log_models=True, log_input_examples=True)
-
-#     st.session_state["first_run"] = False
 
 st.set_page_config(layout="wide")
 
@@ -63,49 +49,15 @@ model_options = [
     "mistral.mistral-large-2402-v1:0"
 ]
 
-# def fuzzy_match(boolean_filter,user_input, type):
-#     if len(user_input) < 5: # filter out short strings that are part of a program name by accident
-#         return boolean_filter
-#     if type == "program":
-#         df = st.session_state["programmas"]
-#         metadata_filter = "metadata.mediacontent_pagetitle_program"
-#     elif type == "person":
-#         df = st.session_state["personen"]
-#         metadata_filter = "metadata.mediacontent_episode_castlist"
-
-#     output = []
-#     for naam in list(df.naam):
-#         try:
-#             score = fuzz.partial_ratio(naam.lower(),user_input.lower())
-#         except:
-#             score = 0
-#         output.append((naam,score))
-
-
-#     output = sorted(
-#         output, 
-#         key=lambda x: x[1],
-#         reverse=True
-#     )[0]
-
-#     if output[1] > 95:
-#         match = output[0]
-#         boolean_filter["bool"]["must"].append({"match_phrase" : {metadata_filter:match}})
-    
-#     return boolean_filter
-
 def fuzzy_match(boolean_filter,user_input, type):
     if len(user_input) < 5: # filter out short strings that are part of a program name by accident
         return boolean_filter
-    if type == "program":
+    if type == "progr am":
         df = st.session_state["programmas"]
         metadata_filter = "metadata.mediacontent_pagetitle_program"
     elif type == "person":
         df = st.session_state["personen"]
-        metadata_filters = []
-        metadata_filters.append("metadata.mediacontent_episode_castlist")
-        metadata_filters.append("metadata.mediacontent_page_description")
-        metadata_filters.append("metadata.mediacontent_page_description_program")
+        metadata_filter = "metadata.mediacontent_episode_castlist"
 
     output = []
     for naam in list(df.naam):
@@ -124,11 +76,7 @@ def fuzzy_match(boolean_filter,user_input, type):
 
     if output[1] > 95:
         match = output[0]
-        if type == "program":
-            boolean_filter["bool"]["must"].append({"match_phrase" : {metadata_filter:match}})
-        elif type == "person":
-            for metadata_filter in metadata_filters:
-                boolean_filter["bool"]["should"].append({"match_phrase" : {metadata_filter:match}})
+        boolean_filter["bool"]["must"].append({"match_phrase" : {metadata_filter:match}})
     
     return boolean_filter
 
@@ -207,10 +155,10 @@ if "model" not in st.session_state or datetime.datetime.now(datetime.timezone.ut
 
     # LLM endpoint
     print("allo")
-    st.session_state.model = "meta.llama3-70b-instruct-v1:0"
+    st.session_state.model = "mistral.mistral-large-2402-v1:0"
     st.session_state.temperature_start_value = 0.6
     st.session_state.top_p_start_value = 0.4
-    st.session_state.max_tokens_start_value = 2048
+    st.session_state.max_tokens_start_value = 512
     st.session_state.llm = ChatBedrockConverse(
         region_name="eu-west-2",
         model=st.session_state.model,
@@ -221,13 +169,13 @@ if "model" not in st.session_state or datetime.datetime.now(datetime.timezone.ut
 
 if "system_prompt" not in st.session_state:
     st.session_state["system_prompt"] = """Je bent een hulpvaardige assistent die Nederlands spreekt.
-        Je krijgt vragen over de catalogus van episodes van het videoplatform VRT MAX. 
-        Je probeert mensen te helpen om episodes aan te bevelen die aansluiten bij hun vraag.
-        Daarvoor krijg je een beschrijving van een aantal episodes.
-        Aan jou om wat relevant is aan te bevelen.
-        Begin niet met het geven van jouw mening over de episodes. Begin direct met het aanbevelen van relevante content aan de gebruiker.
-        Leg ook telkens uit waarom je een episode aanbeveelt.
-        Geef voor alle episodes die je aanbeveelt ook de URL mee als referentie."""
+    Je krijgt vragen over de catalogus van episodes van het videoplatform VRT MAX. 
+    Je probeert mensen te helpen om episodes aan te bevelen die aansluiten bij hun vraag.
+    Daarvoor krijg je een beschrijving van een aantal episodes én eventueel ook een stukje van de ondertitels van de episode.
+    Aan jou om wat relevant is aan te bevelen. Als je niets vindt dat voldoet aan de vraag van de gebruiker dan mag je dat ook zeggen.
+    Begin niet met het geven van jouw mening over de episodes. Begin direct met het aanbevelen van relevante content aan de gebruiker.
+    Leg ook telkens uit waarom je een episode aanbeveelt.
+    Geef voor alle episodes die je aanbeveelt ook de URL mee als referentie."""
 
 col1, col2 = st.columns(2)
 
@@ -273,27 +221,27 @@ def format_docs(docs):
     return "\n\n".join(context)
 
 with col2:
-    question = st.chat_input()
-    if question:
+    prompt = st.chat_input()
+    if prompt:
         start = time.time()
-        st.chat_message("human").write(question)
+        st.chat_message("human").write(prompt)
         stop = time.time()
         print("time: ", str(stop-start))
 
         # Fuzzy matching
         # Initialize filter dict
         start = time.time()
-        boolean_filter = {"bool":{"must":[], "should": []}}
+        boolean_filter = {"bool":{"must":[]}}
 
-        boolean_filter = fuzzy_match(boolean_filter, question, "person")
-        boolean_filter = fuzzy_match(boolean_filter, question, "program")
+        boolean_filter = fuzzy_match(boolean_filter, prompt, "person")
+        boolean_filter = fuzzy_match(boolean_filter, prompt, "program")
         stop = time.time()
         print("fuzzy matching: ", str(stop-start)) 
 
         # Docsearch (ideally in langchain, can't get it to work)
         start = time.time()
         docs = st.session_state["opensearch"].similarity_search(
-            question,
+            prompt,
             k=5,
             vector_field="vrtmax_catalog_vector",
             search_type="script_scoring",
@@ -325,7 +273,7 @@ with col2:
         )
 
         start = time.time()
-        response = chain.stream({"question": question})
+        response = chain.stream(prompt)
         stop = time.time()
         print("llm invoke: ", str(stop-start)) 
         print(response)
